@@ -23,15 +23,15 @@ from typing import List, Dict, Optional, Callable, Tuple, Union
 from dataclasses import dataclass, field
 import numpy as np
 
-from loaders.font_loader import FontLoader, FontFace
-from renderers.glyph_renderer import GlyphRenderer, RenderOptions, GlyphMetrics
-from writers.lvgl.structures import (
+from .font_loader import FontLoader, FontFace
+from .glyph_renderer import GlyphRenderer, RenderOptions, GlyphMetrics
+from ..writers.lvgl.structures import (
     LVGLFont, LVGLHead, LVGLCmap, LVGLGlyf, LVGLKern,
     CmapSubtable, GlyphData, KernPair,
     CompressionType, SubpixelMode, CmapFormat
 )
-from writers.lvgl.compress import compress_bitmap
-from writers.lvgl.writer import LVGLWriter
+from ..writers.lvgl.compress import compress_bitmap
+from ..writers.lvgl.writer import LVGLWriter
 
 
 @dataclass
