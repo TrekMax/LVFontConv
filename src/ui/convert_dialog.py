@@ -12,6 +12,7 @@ from PyQt6.QtWidgets import (
 from PyQt6.QtCore import Qt, QThread, pyqtSignal, QTimer
 from PyQt6.QtGui import QTextCursor, QFont
 
+from core.simple_converter import SimpleFontConverter
 from utils.logger import get_logger
 
 logger = get_logger()
@@ -49,6 +50,15 @@ class ConvertThread(QThread):
             
             total_fonts = len(self.fonts)
             
+            # 创建转换器
+            converter = SimpleFontConverter()
+            
+            # 设置进度回调
+            def progress_callback(message: str, percentage: int):
+                self.log_message.emit(f"  {message}")
+            
+            converter.set_progress_callback(progress_callback)
+            
             for i, font in enumerate(self.fonts):
                 if self.is_cancelled:
                     self.log_message.emit("\n转换已取消")
@@ -65,12 +75,32 @@ class ConvertThread(QThread):
                 self.log_message.emit(f"  范围: {', '.join(font.ranges) if font.ranges else '无'}")
                 self.log_message.emit(f"  符号: {font.symbols if font.symbols else '无'}")
                 self.log_message.emit(f"  字符数: {font.char_count}")
+                self.log_message.emit("")
                 
-                # TODO: 实际转换逻辑
-                # 这里暂时用延迟模拟转换过程
-                self.msleep(1000)  # 模拟处理时间
+                # 执行转换
+                output_path = f"/tmp/{self.config.output_name}_{i}"  # TODO: 使用实际输出路径
                 
-                self.log_message.emit(f"  ✓ 转换完成")
+                success = converter.convert_font(
+                    font_path=font.path,
+                    ranges=font.ranges,
+                    symbols=font.symbols,
+                    size=self.config.font_size,
+                    bpp=self.config.bpp,
+                    output_path=output_path,
+                    compression=self.config.compression,
+                    lvgl_version=self.config.lvgl_version,
+                    no_kerning=self.config.no_kerning,
+                    lcd_mode=self.config.lcd,
+                    lcd_v_mode=self.config.lcd_v
+                )
+                
+                if success:
+                    self.log_message.emit(f"  ✓ 转换完成: {output_path}.c")
+                else:
+                    self.log_message.emit(f"  ✗ 转换失败")
+                    self.conversion_finished.emit(False, f"字体 {font.display_name} 转换失败")
+                    return
+                
                 self.log_message.emit("")
             
             # 完成
