@@ -19,6 +19,7 @@ from PyQt6.QtGui import QAction, QIcon, QKeySequence
 from .font_list_widget import FontListWidget
 from .config_widget import ConfigWidget
 from .convert_dialog import ConvertDialog
+from core.project import Project, FontSource
 from utils.logger import get_logger
 
 logger = get_logger()
@@ -38,6 +39,9 @@ class MainWindow(QMainWindow):
     def __init__(self):
         """初始化主窗口"""
         super().__init__()
+        
+        # 项目管理
+        self.project = Project()
         
         # 窗口设置
         self.setWindowTitle("LVFontConv - LVGL 字体转换工具")
@@ -274,11 +278,18 @@ class MainWindow(QMainWindow):
         self.action_convert.setEnabled(has_fonts)
         self.action_preview.setEnabled(has_fonts)
         
+        # 标记项目已修改
+        self._mark_project_modified()
+        
         logger.info(f"字体列表更新: {count} 个字体")
     
     def _on_config_changed(self):
         """配置变化"""
         config = self.config_widget.get_config()
+        
+        # 标记项目已修改
+        self._mark_project_modified()
+        
         logger.debug(f"配置更新: 大小={config.font_size}, BPP={config.bpp}, 格式={config.output_format}")
     
     def _on_convert(self):
@@ -359,9 +370,177 @@ class MainWindow(QMainWindow):
     
     def closeEvent(self, event):
         """窗口关闭事件"""
+        # 检查未保存的更改
+        if self.project.is_modified:
+            reply = QMessageBox.question(
+                self,
+                "未保存的更改",
+                "项目有未保存的更改，是否保存？",
+                QMessageBox.StandardButton.Save |
+                QMessageBox.StandardButton.Discard |
+                QMessageBox.StandardButton.Cancel
+            )
+            
+            if reply == QMessageBox.StandardButton.Save:
+                if not self._save_project():
+                    event.ignore()
+                    return
+            elif reply == QMessageBox.StandardButton.Cancel:
+                event.ignore()
+                return
+        
         # 保存窗口状态
         self.settings.setValue("geometry", self.saveGeometry())
         self.settings.setValue("windowState", self.saveState())
         
-        logger.info("应用程序关闭")
         event.accept()
+        logger.info("应用程序已关闭")
+    
+    # ========== 项目管理 ==========
+    
+    def _on_new_project(self):
+        """新建项目"""
+        # 检查未保存的更改
+        if self.project.is_modified:
+            reply = QMessageBox.question(
+                self,
+                "未保存的更改",
+                "当前项目有未保存的更改，是否保存？",
+                QMessageBox.StandardButton.Save |
+                QMessageBox.StandardButton.Discard |
+                QMessageBox.StandardButton.Cancel
+            )
+            
+            if reply == QMessageBox.StandardButton.Save:
+                if not self._save_project():
+                    return
+            elif reply == QMessageBox.StandardButton.Cancel:
+                return
+        
+        # 创建新项目
+        self.project.new()
+        self._load_project_to_UI()
+        self._update_window_title()
+        
+        logger.info("创建新项目")
+        self.statusBar().showMessage("新建项目", 2000)
+    
+    def _on_open_project(self):
+        """打开项目"""
+        # 检查未保存的更改
+        if self.project.is_modified:
+            reply = QMessageBox.question(
+                self,
+                "未保存的更改",
+                "当前项目有未保存的更改，是否保存？",
+                QMessageBox.StandardButton.Save |
+                QMessageBox.StandardButton.Discard |
+                QMessageBox.StandardButton.Cancel
+            )
+            
+            if reply == QMessageBox.StandardButton.Save:
+                if not self._save_project():
+                    return
+            elif reply == QMessageBox.StandardButton.Cancel:
+                return
+        
+        # 选择文件
+        file_path, _ = QFileDialog.getOpenFileName(
+            self,
+            "打开项目",
+            "",
+            "LVFontConv 项目 (*.lvproj);;所有文件 (*)"
+        )
+        
+        if file_path:
+            if self.project.load(file_path):
+                self._load_project_to_UI()
+                self._update_window_title()
+                self.statusBar().showMessage(f"已打开: {file_path}", 3000)
+                logger.info(f"打开项目: {file_path}")
+            else:
+                QMessageBox.critical(
+                    self,
+                    "错误",
+                    "无法打开项目文件"
+                )
+    
+    def _on_save_project(self):
+        """保存项目"""
+        self._save_project()
+    
+    def _on_save_project_as(self):
+        """另存为项目"""
+        self._save_project(save_as=True)
+    
+    def _save_project(self, save_as=False) -> bool:
+        """
+        保存项目
+        
+        Args:
+            save_as: 是否另存为
+            
+        Returns:
+            True if successful, False otherwise
+        """
+        # 从 UI 同步到 project
+        self._save_ui_to_project()
+        
+        # 确定保存路径
+        file_path = self.project.file_path
+        
+        if save_as or not file_path:
+            file_path, _ = QFileDialog.getSaveFileName(
+                self,
+                "保存项目",
+                self.project.config.output_name + ".lvproj",
+                "LVFontConv 项目 (*.lvproj);;所有文件 (*)"
+            )
+            
+            if not file_path:
+                return False
+        
+        # 保存
+        if self.project.save(file_path):
+            self._update_window_title()
+            self.statusBar().showMessage(f"已保存: {file_path}", 3000)
+            logger.info(f"保存项目: {file_path}")
+            return True
+        else:
+            QMessageBox.critical(
+                self,
+                "错误",
+                "无法保存项目文件"
+            )
+            return False
+    
+    def _load_project_to_UI(self):
+        """将项目数据加载到 UI"""
+        # 清空字体列表
+        self.font_list.clear_fonts()
+        
+        # 加载字体
+        for font_source in self.project.fonts:
+            self.font_list.add_font_source(font_source)
+        
+        # 加载配置
+        self.config_widget.set_config(self.project.config)
+    
+    def _save_ui_to_project(self):
+        """将 UI 数据保存到项目"""
+        # 保存字体列表
+        self.project.fonts = self.font_list.get_font_sources()
+        
+        # 保存配置
+        self.project.config = self.config_widget.get_config()
+    
+    def _update_window_title(self):
+        """更新窗口标题"""
+        title = f"LVFontConv - {self.project.display_name}"
+        self.setWindowTitle(title)
+    
+    def _mark_project_modified(self):
+        """标记项目已修改"""
+        self.project.mark_modified()
+        self._update_window_title()
+

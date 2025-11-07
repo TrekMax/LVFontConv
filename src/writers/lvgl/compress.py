@@ -208,6 +208,10 @@ def apply_xor_prefilter(pixels: np.ndarray) -> np.ndarray:
     if pixels.ndim != 2:
         raise ValueError("XOR 预过滤需要二维数组 (height, width)")
     
+    # 处理空位图
+    if pixels.size == 0:
+        return np.array([], dtype=pixels.dtype)
+    
     height, width = pixels.shape
     filtered = np.zeros_like(pixels)
     

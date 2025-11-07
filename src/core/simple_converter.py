@@ -1,17 +1,21 @@
 """
 Simple Font Converter - 简化的字体转换接口
 
-直接使用 Phase 1 和 Phase 2 的现有 API,不引入复杂抽象。
+直接使用 Phase 1 和 Phase 2 的现有 API,构建完整的 LVGLFont 结构。
 """
 
 from pathlib import Path
 from typing import List, Optional, Callable, Set, Dict
 import re
+import numpy as np
 
 from core.font_loader import FontLoader
 from core.glyph_renderer import GlyphRenderer
-from writers.lvgl.structures import FontData, GlyphData, CmapEntry, CompressionType, SubpixelMode
-from writers.lvgl.compress import compress_bitmap
+from writers.lvgl.structures import (
+    LVGLFont, LVGLHead, LVGLCmap, LVGLGlyf, LVGLKern,
+    CmapSubtable, GlyphData, KernPair,
+    CompressionType, SubpixelMode, CmapFormat
+)
 from writers.lvgl.writer import LVGLWriter
 from utils.logger import get_logger
 
@@ -156,8 +160,14 @@ class SimpleFontConverter:
             # 3. 创建字形渲染器
             self._report_progress("初始化渲染器", 25)
             
+            # 从 FontLoader 获取 FreeType Face
+            if font_path not in font_loader._freetype_faces:
+                raise ValueError(f"字体未正确加载: {font_path}")
+            
+            face = font_loader._freetype_faces[font_path]
+            
             renderer = GlyphRenderer()
-            renderer.set_font_face(font_path, font_loader._font)  # 传递 FreeType Face
+            renderer.set_font_face(font_path, face)  # 传递 FreeType Face
             renderer.set_size(size)
             
             # BPP 映射: 实际位深度 -> GlyphRenderer 的 bpp 参数
@@ -170,26 +180,73 @@ class SimpleFontConverter:
             
             # 4. 渲染所有字形
             self._report_progress("渲染字形", 30)
-            glyphs: Dict[int, GlyphData] = {}
-            cmap_entries: List[CmapEntry] = []
+            
+            # 创建 Glyf 容器
+            compression_type = CompressionType.RLE if compression == "rle" else CompressionType.NONE
+            glyf = LVGLGlyf(bpp=bpp, compression=compression_type)
+            
+            # 添加保留字形 (ID 0)
+            reserved_glyph = GlyphData(
+                glyph_id=0,
+                unicode=0,
+                bitmap=np.zeros((1, 1), dtype=np.uint8),
+                bitmap_index=0,
+                advance_width=0.0,
+                box_w=0,
+                box_h=0,
+                ofs_x=0,
+                ofs_y=0
+            )
+            glyf.add_glyph(reserved_glyph)
+            
+            # 渲染所有字符
+            glyph_id = 1  # 从 1 开始 (0 是保留)
+            bitmap_offset = 0
+            
+            # 用于构建 Cmap
+            char_to_glyph_id = {}
             
             total_chars = len(codepoints)
             for i, codepoint in enumerate(sorted(codepoints)):
-                # 渲染字形
-                glyph_data = renderer.render_glyph(
+                # 渲染字形 (使用 Phase 1 的 GlyphRenderer)
+                rendered_glyph = renderer.render_glyph(
                     font_path=font_path,
                     char_code=codepoint,
                     mapped_code=codepoint
                 )
                 
-                if glyph_data:
-                    glyphs[codepoint] = glyph_data
-                    cmap_entries.append(CmapEntry(
-                        unicode=codepoint,
-                        glyph_index=len(glyphs) - 1  # 简单的索引分配
-                    ))
-                else:
+                if not rendered_glyph:
                     logger.warning(f"字符 U+{codepoint:04X} 渲染失败,跳过")
+                    continue
+                
+                # 转换为 Phase 2 的 GlyphData 结构
+                lvgl_glyph = GlyphData(
+                    glyph_id=glyph_id,
+                    unicode=codepoint,
+                    bitmap=rendered_glyph.bitmap,
+                    bitmap_index=bitmap_offset,
+                    advance_width=float(rendered_glyph.advance_width),
+                    box_w=rendered_glyph.width,
+                    box_h=rendered_glyph.height,
+                    ofs_x=rendered_glyph.offset_x,
+                    ofs_y=rendered_glyph.offset_y
+                )
+                
+                glyf.add_glyph(lvgl_glyph)
+                char_to_glyph_id[codepoint] = glyph_id
+                
+                # 更新位图偏移
+                bitmap_size = rendered_glyph.width * rendered_glyph.height
+                if bpp == 1:
+                    bitmap_offset += (bitmap_size + 7) // 8
+                elif bpp == 2:
+                    bitmap_offset += (bitmap_size + 3) // 4
+                elif bpp == 4:
+                    bitmap_offset += (bitmap_size + 1) // 2
+                else:  # bpp == 8
+                    bitmap_offset += bitmap_size
+                
+                glyph_id += 1
                 
                 # 更新进度
                 if i % 10 == 0 or i == total_chars - 1:
@@ -199,60 +256,105 @@ class SimpleFontConverter:
                         progress
                     )
             
-            if not glyphs:
+            if len(glyf.glyphs) <= 1:  # 只有保留字形
                 logger.error("没有成功渲染任何字形")
                 return False
             
-            logger.info(f"成功渲染 {len(glyphs)} 个字形")
+            logger.info(f"成功渲染 {len(glyf.glyphs) - 1} 个字形")
             
-            # 5. 字距调整 (暂时跳过,Phase 1 API 不完整)
-            self._report_progress("字距调整", 70)
-            kern_pairs = []  # TODO: 实现字距调整
+            # 5. 构建 Cmap
+            self._report_progress("构建字符映射表", 75)
+            cmap = LVGLCmap()
             
-            # 6. 应用压缩
-            self._report_progress("压缩字形数据", 75)
-            compression_type = CompressionType.RLE if compression == "rle" else CompressionType.NONE
+            # 简化: 为每个字符范围创建一个子表
+            sorted_chars = sorted(char_to_glyph_id.keys())
+            if sorted_chars:
+                # 创建连续范围
+                range_start = sorted_chars[0]
+                range_chars = [range_start]
+                
+                for char in sorted_chars[1:]:
+                    if char == range_chars[-1] + 1:
+                        # 连续字符
+                        range_chars.append(char)
+                    else:
+                        # 创建子表
+                        subtable = CmapSubtable(
+                            range_start=range_start,
+                            range_length=len(range_chars),
+                            glyph_id_start=char_to_glyph_id[range_start],
+                            format=CmapFormat.FORMAT0_TINY
+                        )
+                        cmap.add_subtable(subtable)
+                        
+                        # 开始新范围
+                        range_start = char
+                        range_chars = [char]
+                
+                # 添加最后一个范围
+                subtable = CmapSubtable(
+                    range_start=range_start,
+                    range_length=len(range_chars),
+                    glyph_id_start=char_to_glyph_id[range_start],
+                    format=CmapFormat.FORMAT0_TINY
+                )
+                cmap.add_subtable(subtable)
             
-            if compression_type == CompressionType.RLE:
-                for glyph_data in glyphs.values():
-                    if glyph_data.bitmap:
-                        compressed = compress_bitmap(glyph_data.bitmap, bpp)
-                        glyph_data.bitmap = compressed
-                logger.info("字形数据已压缩")
+            # 6. 字距调整 (暂时跳过)
+            self._report_progress("字距调整", 80)
+            kern = LVGLKern()  # 空的字距表
             
-            # 7. 确定子像素模式
-            if lcd_mode:
-                subpixel_mode = SubpixelMode.LCD
-            elif lcd_v_mode:
-                subpixel_mode = SubpixelMode.LCD_V
-            else:
-                subpixel_mode = SubpixelMode.NONE
+            # 7. 构建 Head
+            self._report_progress("构建字体头", 85)
             
-            # 8. 构建 FontData
-            self._report_progress("构建字体数据结构", 85)
-            
-            # 计算基准线和行高
+            # 计算度量
             baseline = font_info.ascent * size // font_info.units_per_em
             line_height = (font_info.ascent - font_info.descent) * size // font_info.units_per_em
             
-            font_data = FontData(
-                base_line=baseline,
-                line_height=line_height,
+            head = LVGLHead(
+                font_size=size,
+                ascent=baseline,
+                descent=line_height - baseline,
+                typo_ascent=baseline,
+                typo_descent=line_height - baseline,
+                typo_line_gap=0,
+                min_y=-(line_height - baseline),
+                max_y=baseline,
+                default_advance_width=size // 2,  # 估算
+                kerning_scale=0.25,
+                index_to_loc_format=0,
+                glyph_id_format=0,
+                advance_width_format=0,
                 bpp=bpp,
-                compression=compression_type,
-                subpixel_mode=subpixel_mode,
-                glyphs=glyphs,
-                cmap=cmap_entries,
-                kerning=kern_pairs
+                bbox_x_bits=4,
+                bbox_y_bits=4,
+                bbox_w_bits=4,
+                bbox_h_bits=4,
+                advance_width_bits=8,
+                compression_id=compression_type,
+                subpixel_mode=SubpixelMode.NONE,  # 暂不支持子像素
+                underline_position=-1,
+                underline_thickness=1
+            )
+            
+            # 8. 构建 LVGLFont
+            self._report_progress("组装字体结构", 90)
+            
+            font_name = Path(font_path).stem
+            lvgl_font = LVGLFont(
+                name=font_name,
+                head=head,
+                cmap=cmap,
+                glyf=glyf,
+                kern=kern
             )
             
             # 9. 写入文件
-            self._report_progress("写入输出文件", 90)
-            writer = LVGLWriter(lvgl_version=lvgl_version)
+            self._report_progress("写入输出文件", 95)
+            writer = LVGLWriter()
             
             output_file = f"{output_path}.c"
-            font_name = Path(font_path).stem
-            writer.write(font_data, output_file, font_name)
+            writer.write(lvgl_font, output_file)
             
             logger.info(f"字体转换成功: {output_file}")
             self._report_progress("转换完成", 100)
@@ -260,13 +362,7 @@ class SimpleFontConverter:
             return True
             
         except Exception as e:
-            logger.error(f"字体转换失败: {e}", exc_info=True)
+            logger.error(f"字体转换失败: {e}")
+            import traceback
+            traceback.print_exc()
             return False
-        
-        finally:
-            # 清理资源
-            if font_loader:
-                try:
-                    font_loader.close()
-                except:
-                    pass
