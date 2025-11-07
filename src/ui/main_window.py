@@ -18,6 +18,7 @@ from PyQt6.QtGui import QAction, QIcon, QKeySequence
 
 from .font_list_widget import FontListWidget
 from .config_widget import ConfigWidget
+from .convert_dialog import ConvertDialog
 from utils.logger import get_logger
 
 logger = get_logger()
@@ -282,9 +283,38 @@ class MainWindow(QMainWindow):
     
     def _on_convert(self):
         """开始转换"""
-        logger.info("开始转换")
-        # TODO: 实现转换逻辑
-        self.statusBar().showMessage("转换中...", 0)
+        # 获取字体列表和配置
+        fonts = self.font_list_widget.get_font_sources()
+        config = self.config_widget.get_config()
+        
+        if not fonts:
+            QMessageBox.warning(
+                self,
+                "无法转换",
+                "请先添加至少一个字体文件。"
+            )
+            return
+        
+        # 验证配置
+        if not config.output_name.strip():
+            QMessageBox.warning(
+                self,
+                "配置错误",
+                "请设置输出文件名。"
+            )
+            return
+        
+        logger.info(f"开始转换 {len(fonts)} 个字体")
+        
+        # 显示转换对话框
+        success = ConvertDialog.show_and_convert(fonts, config, self)
+        
+        if success:
+            self.statusBar().showMessage("转换成功完成", 3000)
+            logger.info("转换成功")
+        else:
+            self.statusBar().showMessage("转换未完成", 3000)
+            logger.info("转换未完成或已取消")
     
     def _on_preview(self):
         """预览字体"""
