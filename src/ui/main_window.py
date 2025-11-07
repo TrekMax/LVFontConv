@@ -17,6 +17,7 @@ from PyQt6.QtCore import Qt, QSettings, QSize
 from PyQt6.QtGui import QAction, QIcon, QKeySequence
 
 from .font_list_widget import FontListWidget
+from .config_widget import ConfigWidget
 from utils.logger import get_logger
 
 logger = get_logger()
@@ -181,11 +182,9 @@ class MainWindow(QMainWindow):
         self.font_list_widget = FontListWidget()
         splitter.addWidget(self.font_list_widget)
         
-        # 右侧面板 (配置和预览)
-        right_widget = QWidget()
-        right_layout = QVBoxLayout(right_widget)
-        right_layout.addWidget(QWidget())  # 占位符 - 将在 Task 3.3 中替换为配置组件
-        splitter.addWidget(right_widget)
+        # 右侧面板 (配置)
+        self.config_widget = ConfigWidget()
+        splitter.addWidget(self.config_widget)
         
         # 设置分割比例
         splitter.setStretchFactor(0, 1)
@@ -197,6 +196,9 @@ class MainWindow(QMainWindow):
         self.font_list_widget.font_added.connect(self._on_font_list_changed)
         self.font_list_widget.font_removed.connect(self._on_font_list_changed)
         self.font_list_widget.font_changed.connect(self._on_font_list_changed)
+        
+        # 连接配置变化信号
+        self.config_widget.config_changed.connect(self._on_config_changed)
         
         # 连接菜单/工具栏动作到字体列表组件的内部方法
         self.action_add_font.triggered.connect(self.font_list_widget._on_add_font)
@@ -272,6 +274,11 @@ class MainWindow(QMainWindow):
         self.action_preview.setEnabled(has_fonts)
         
         logger.info(f"字体列表更新: {count} 个字体")
+    
+    def _on_config_changed(self):
+        """配置变化"""
+        config = self.config_widget.get_config()
+        logger.debug(f"配置更新: 大小={config.font_size}, BPP={config.bpp}, 格式={config.output_format}")
     
     def _on_convert(self):
         """开始转换"""
