@@ -1,0 +1,23 @@
+# LVFontConv - PyQt6 依赖包
+# Python version: 3.9+
+
+# UI Framework
+PyQt6>=6.4.0
+
+# Font Processing
+fontTools>=4.38.0
+freetype-py>=2.3.0
+
+# Image Processing
+Pillow>=9.3.0
+
+# Numerical Computing
+numpy>=1.24.0
+
+# Development Dependencies (optional)
+# pytest>=7.2.0
+# pytest-qt>=4.2.0
+# pytest-cov>=4.0.0
+# black>=23.1.0
+# flake8>=6.0.0
+# mypy>=1.0.0
