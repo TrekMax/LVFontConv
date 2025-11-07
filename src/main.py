@@ -5,7 +5,16 @@ A PyQt6-based font converter for LVGL with preview capabilities
 """
 
 import sys
+from pathlib import Path
 from PyQt6.QtWidgets import QApplication
+
+# 添加当前目录到路径
+sys.path.insert(0, str(Path(__file__).parent))
+
+from ui.main_window import MainWindow
+from utils.logger import get_logger
+
+logger = get_logger()
 
 
 def main():
@@ -13,20 +22,22 @@ def main():
     app = QApplication(sys.argv)
     app.setApplicationName("LVFontConv")
     app.setApplicationVersion("0.1.0")
-    app.setOrganizationName("LVFontConv")
+    app.setOrganizationName("LVGL")
+    app.setOrganizationDomain("lvgl.io")
     
-    # TODO: Import and create main window
-    # from ui.main_window import MainWindow
-    # window = MainWindow()
-    # window.show()
+    # 设置应用程序样式
+    app.setStyle("Fusion")
     
-    print("LVFontConv v0.1.0")
-    print("Main window not implemented yet.")
-    print("Project structure initialized successfully!")
+    logger.info("=" * 70)
+    logger.info("LVFontConv 启动 v0.1.0")
+    logger.info("=" * 70)
     
-    # For now, just exit
-    return 0
-    # return app.exec()
+    # 创建并显示主窗口
+    window = MainWindow()
+    window.show()
+    
+    # 运行事件循环
+    return app.exec()
 
 
 if __name__ == "__main__":
