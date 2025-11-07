@@ -16,6 +16,7 @@ from PyQt6.QtWidgets import (
 from PyQt6.QtCore import Qt, QSettings, QSize
 from PyQt6.QtGui import QAction, QIcon, QKeySequence
 
+from .font_list_widget import FontListWidget
 from utils.logger import get_logger
 
 logger = get_logger()
@@ -48,7 +49,7 @@ class MainWindow(QMainWindow):
         self._create_actions()
         self._create_menus()
         self._create_toolbars()
-        self._create_central_widget()
+        self._init_ui()
         self._create_statusbar()
         
         logger.info("主窗口初始化完成")
@@ -82,15 +83,16 @@ class MainWindow(QMainWindow):
         self.action_exit.triggered.connect(self.close)
         
         # 字体菜单动作
-        self.action_add_font = QAction("添加字体(&F)...", self)
-        self.action_add_font.setShortcut(QKeySequence("Ctrl+F"))
-        self.action_add_font.setStatusTip("添加 TrueType 字体文件")
-        self.action_add_font.triggered.connect(self._on_add_font)
+        self.action_add_font = QAction("添加字体(&A)", self)
+        self.action_add_font.setShortcut(QKeySequence("Ctrl+A"))
+        self.action_add_font.setStatusTip("添加字体文件")
+        # 连接到字体列表组件的内部方法(稍后在 _init_ui 中设置)
         
         self.action_remove_font = QAction("移除字体(&R)", self)
-        self.action_remove_font.setShortcut(QKeySequence.StandardKey.Delete)
+        self.action_remove_font.setShortcut(QKeySequence("Del"))
         self.action_remove_font.setStatusTip("移除选中的字体")
-        self.action_remove_font.triggered.connect(self._on_remove_font)
+        self.action_remove_font.setEnabled(False)
+        # 连接到字体列表组件的内部方法(稍后在 _init_ui 中设置)
         self.action_remove_font.setEnabled(False)
         
         # 转换菜单动作
@@ -163,28 +165,42 @@ class MainWindow(QMainWindow):
         toolbar.addAction(self.action_convert)
         toolbar.addAction(self.action_preview)
     
-    def _create_central_widget(self):
-        """创建中心区域"""
-        # 创建主分割器
+    def _init_ui(self):
+        """初始化UI"""
+        # 创建中心部件
+        central_widget = QWidget()
+        self.setCentralWidget(central_widget)
+        
+        # 主布局
+        layout = QVBoxLayout(central_widget)
+        
+        # 创建分割器
         splitter = QSplitter(Qt.Orientation.Horizontal)
         
-        # 左侧：字体列表 (待实现)
-        left_widget = QWidget()
-        left_layout = QVBoxLayout(left_widget)
-        left_layout.addWidget(QWidget())  # 占位符
+        # 左侧面板 (字体列表)
+        self.font_list_widget = FontListWidget()
+        splitter.addWidget(self.font_list_widget)
         
-        # 右侧：配置面板 + 预览区域
+        # 右侧面板 (配置和预览)
         right_widget = QWidget()
         right_layout = QVBoxLayout(right_widget)
-        right_layout.addWidget(QWidget())  # 占位符
-        
-        # 添加到分割器
-        splitter.addWidget(left_widget)
+        right_layout.addWidget(QWidget())  # 占位符 - 将在 Task 3.3 中替换为配置组件
         splitter.addWidget(right_widget)
-        splitter.setStretchFactor(0, 1)  # 左侧占 1 份
-        splitter.setStretchFactor(1, 2)  # 右侧占 2 份
         
-        self.setCentralWidget(splitter)
+        # 设置分割比例
+        splitter.setStretchFactor(0, 1)
+        splitter.setStretchFactor(1, 2)
+        
+        layout.addWidget(splitter)
+        
+        # 连接字体列表信号
+        self.font_list_widget.font_added.connect(self._on_font_list_changed)
+        self.font_list_widget.font_removed.connect(self._on_font_list_changed)
+        self.font_list_widget.font_changed.connect(self._on_font_list_changed)
+        
+        # 连接菜单/工具栏动作到字体列表组件的内部方法
+        self.action_add_font.triggered.connect(self.font_list_widget._on_add_font)
+        self.action_remove_font.triggered.connect(self.font_list_widget._on_remove_font)
     
     def _create_statusbar(self):
         """创建状态栏"""
@@ -234,25 +250,28 @@ class MainWindow(QMainWindow):
             # TODO: 实现另存为逻辑
             self.statusBar().showMessage(f"已保存到: {filename}", 2000)
     
-    def _on_add_font(self):
-        """添加字体"""
-        logger.info("添加字体")
-        filenames, _ = QFileDialog.getOpenFileNames(
-            self,
-            "选择字体文件",
-            "",
-            "字体文件 (*.ttf *.otf *.woff *.woff2);;所有文件 (*)"
-        )
-        if filenames:
-            logger.info(f"添加 {len(filenames)} 个字体")
-            # TODO: 实现添加字体逻辑
-            self.statusBar().showMessage(f"已添加 {len(filenames)} 个字体", 2000)
-    
-    def _on_remove_font(self):
-        """移除字体"""
-        logger.info("移除字体")
-        # TODO: 实现移除字体逻辑
-        self.statusBar().showMessage("字体已移除", 2000)
+    def _on_font_list_changed(self):
+        """字体列表变化"""
+        fonts = self.font_list_widget.get_font_sources()
+        count = len(fonts)
+        
+        # 更新状态栏
+        if count == 0:
+            self.statusBar().showMessage("没有字体", 2000)
+        else:
+            total_chars = sum(font.char_count for font in fonts)
+            self.statusBar().showMessage(
+                f"已添加 {count} 个字体，共 {total_chars} 个字符",
+                2000
+            )
+        
+        # 更新操作按钮状态
+        has_fonts = count > 0
+        self.action_remove_font.setEnabled(has_fonts)
+        self.action_convert.setEnabled(has_fonts)
+        self.action_preview.setEnabled(has_fonts)
+        
+        logger.info(f"字体列表更新: {count} 个字体")
     
     def _on_convert(self):
         """开始转换"""
