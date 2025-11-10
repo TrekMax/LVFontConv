@@ -413,10 +413,50 @@ lv_font_t {font.name} = {{
 }};"""
     
     def _flatten_bitmap(self, bitmap: np.ndarray, bpp: int) -> bytes:
-        """将位图扁平化为字节数组（无压缩）"""
-        # TODO: 实现按 BPP 打包位图
-        # 目前简化处理，直接返回字节
-        return bitmap.flatten().tobytes()
+        """
+        将位图扁平化为字节数组（无压缩）
+        
+        根据 BPP 打包像素:
+        - 1 bpp: 8 像素/字节
+        - 2 bpp: 4 像素/字节
+        - 4 bpp: 2 像素/字节
+        - 8 bpp: 1 像素/字节
+        """
+        flat = bitmap.flatten()
+        
+        if bpp == 8:
+            # 8-bit: 1 像素/字节,直接返回
+            return flat.tobytes()
+        elif bpp == 4:
+            # 4-bit: 2 像素/字节,高位在前
+            packed = []
+            for i in range(0, len(flat), 2):
+                high = (flat[i] & 0x0F) << 4  # 高4位
+                low = flat[i+1] & 0x0F if i+1 < len(flat) else 0  # 低4位
+                packed.append(high | low)
+            return bytes(packed)
+        elif bpp == 2:
+            # 2-bit: 4 像素/字节
+            packed = []
+            for i in range(0, len(flat), 4):
+                byte = 0
+                for j in range(4):
+                    if i+j < len(flat):
+                        byte |= (flat[i+j] & 0x03) << (6 - j*2)
+                packed.append(byte)
+            return bytes(packed)
+        elif bpp == 1:
+            # 1-bit: 8 像素/字节
+            packed = []
+            for i in range(0, len(flat), 8):
+                byte = 0
+                for j in range(8):
+                    if i+j < len(flat):
+                        byte |= (flat[i+j] & 0x01) << (7 - j)
+                packed.append(byte)
+            return bytes(packed)
+        else:
+            raise ValueError(f"不支持的 BPP: {bpp}")
     
     def _format_hex_array(self, data: bytes, cols: int = 12) -> str:
         """格式化字节数组为十六进制 C 数组"""
