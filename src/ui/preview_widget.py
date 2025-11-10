@@ -9,7 +9,7 @@
 from PyQt6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel,
     QComboBox, QLineEdit, QScrollArea, QPushButton,
-    QSpinBox, QCheckBox, QProgressDialog, QApplication
+    QSpinBox, QCheckBox, QApplication
 )
 from PyQt6.QtCore import Qt, QRect, QSize
 from PyQt6.QtGui import QPainter, QColor, QPen, QFont, QPixmap, QImage
@@ -339,21 +339,8 @@ class PreviewWidget(QWidget):
         
         total_chars = len(codepoints)
         
-        # 显示进度对话框
-        self.progress_dialog = QProgressDialog(
-            "正在渲染字形...",
-            "取消",
-            0,
-            total_chars,
-            self
-        )
-        self.progress_dialog.setWindowTitle("预览")
-        self.progress_dialog.setWindowModality(Qt.WindowModality.WindowModal)
-        self.progress_dialog.setAutoClose(True)  # 完成时自动关闭
-        self.progress_dialog.setAutoReset(False)  # 不要自动重置
-        self.progress_dialog.setMinimumDuration(0)  # 立即显示,不延迟
-        self.progress_dialog.canceled.connect(self._on_render_cancelled)
-        self.progress_dialog.show()  # 强制立即显示
+        # 设置等待光标
+        self.setCursor(Qt.CursorShape.WaitCursor)
         
         # 保存码点列表供后台线程使用
         self._codepoints_to_render = codepoints
@@ -370,15 +357,6 @@ class PreviewWidget(QWidget):
                     glyphs.append((code, glyph_data))
                 except Exception as e:
                     logger.debug(f"渲染字符 U+{code:04X} 失败: {e}")
-                
-                # 每10个字符发送一次进度更新
-                if i % 10 == 0:
-                    progress = int((i / total_chars) * 100)
-                    self.worker_thread.progress.emit(progress, f"已渲染 {i}/{total_chars} 个字符")
-            
-            # 发送最终进度
-            if not self.worker_thread.is_cancelled():
-                self.worker_thread.progress.emit(100, f"完成 {len(glyphs)} 个字符")
             
             return glyphs
         
@@ -386,74 +364,30 @@ class PreviewWidget(QWidget):
         self.worker_thread = WorkerThread(render_task)
         self.worker_thread.finished.connect(self._on_render_finished)
         self.worker_thread.error.connect(self._on_render_error)
-        self.worker_thread.progress.connect(self._on_render_progress)
+        # 不再需要进度更新
+        # self.worker_thread.progress.connect(self._on_render_progress)
         
-        # 强制处理事件,确保对话框先显示
+        # 强制处理事件,确保光标更新
         QApplication.processEvents()
         
         self.worker_thread.start()
-    
-    def _on_render_progress(self, percentage, message):
-        """更新渲染进度"""
-        if self.progress_dialog is not None:
-            try:
-                self.progress_dialog.setValue(int((percentage / 100) * len(self._codepoints_to_render)))
-                self.progress_dialog.setLabelText(f"正在渲染字形... {message}")
-            except (AttributeError, RuntimeError):
-                # 对话框可能已经被关闭
-                pass
     
     def _on_render_finished(self, glyphs):
         """渲染完成"""
         logger.debug(f"_on_render_finished 被调用,glyphs 数量: {len(glyphs) if glyphs else 0}")
         
-        # 先断开信号,避免在关闭对话框后还收到进度更新
-        if self.worker_thread:
-            try:
-                self.worker_thread.progress.disconnect()
-                logger.debug("进度信号已断开")
-            except Exception as e:
-                logger.debug(f"断开进度信号失败: {e}")
-        
-        if self.progress_dialog:
-            logger.debug("正在关闭进度对话框...")
-            self.progress_dialog.cancel()  # 先取消对话框
-            self.progress_dialog.deleteLater()  # 延迟删除
-            self.progress_dialog = None
-            logger.debug("进度对话框已关闭")
-        else:
-            logger.debug("进度对话框为 None,无需关闭")
+        # 恢复正常光标
+        self.unsetCursor()
         
         self.canvas.set_glyphs(glyphs)
         logger.info(f"预览已更新: {len(glyphs)} 个字形")
     
     def _on_render_error(self, error):
         """渲染出错"""
-        # 先断开信号
-        if self.worker_thread:
-            try:
-                self.worker_thread.progress.disconnect()
-            except:
-                pass
-        
-        if self.progress_dialog:
-            self.progress_dialog.cancel()
-            self.progress_dialog.deleteLater()
-            self.progress_dialog = None
+        # 恢复正常光标
+        self.unsetCursor()
         
         logger.error(f"渲染失败: {error}")
-    
-    def _on_render_cancelled(self):
-        """取消渲染"""
-        if self.worker_thread:
-            self.worker_thread.cancel()
-            logger.info("用户取消渲染")
-        
-        # 关闭进度对话框
-        if self.progress_dialog:
-            self.progress_dialog.cancel()
-            self.progress_dialog.deleteLater()
-            self.progress_dialog = None
     
     def _on_mode_changed(self, index):
         """模式切换"""
