@@ -82,34 +82,49 @@ class GlyphPreviewCanvas(QWidget):
             )
             return
         
-        # 绘制字形
-        for i, (char_code, glyph_data) in enumerate(self.glyphs):
-            row = i // self.columns
-            col = i % self.columns
-            
-            x = col * self.cell_size + 10
-            y = row * self.cell_size + 10
-            
-            # 绘制单元格边框
-            if self.show_grid:
-                painter.setPen(QPen(QColor(200, 200, 200), 1))
-                painter.drawRect(x, y, self.cell_size - 2, self.cell_size - 2)
-            
-            # 绘制字符标签
-            painter.setPen(QColor(100, 100, 100))
-            font = QFont("monospace", 8)
-            painter.setFont(font)
-            label = f"U+{char_code:04X}"
-            painter.drawText(x + 2, y + 12, label)
-            
-            # 绘制字形位图
-            if glyph_data and glyph_data.bitmap is not None and glyph_data.bitmap.size > 0:
-                self._draw_glyph_bitmap(
-                    painter,
-                    glyph_data,
-                    x + self.cell_size // 2,
-                    y + self.cell_size // 2
-                )
+        # 获取可见区域（视口裁剪优化）
+        visible_rect = event.rect()
+        
+        # 计算可见的行范围
+        first_visible_row = max(0, (visible_rect.top() - 10) // self.cell_size)
+        last_visible_row = min(
+            (len(self.glyphs) + self.columns - 1) // self.columns,
+            (visible_rect.bottom() - 10) // self.cell_size + 1
+        )
+        
+        # 只绘制可见区域的字形
+        for row in range(first_visible_row, last_visible_row):
+            for col in range(self.columns):
+                i = row * self.columns + col
+                
+                if i >= len(self.glyphs):
+                    break
+                
+                char_code, glyph_data = self.glyphs[i]
+                
+                x = col * self.cell_size + 10
+                y = row * self.cell_size + 10
+                
+                # 绘制单元格边框
+                if self.show_grid:
+                    painter.setPen(QPen(QColor(200, 200, 200), 1))
+                    painter.drawRect(x, y, self.cell_size - 2, self.cell_size - 2)
+                
+                # 绘制字符标签
+                painter.setPen(QColor(100, 100, 100))
+                font = QFont("monospace", 8)
+                painter.setFont(font)
+                label = f"U+{char_code:04X}"
+                painter.drawText(x + 2, y + 12, label)
+                
+                # 绘制字形位图
+                if glyph_data and glyph_data.bitmap is not None and glyph_data.bitmap.size > 0:
+                    self._draw_glyph_bitmap(
+                        painter,
+                        glyph_data,
+                        x + self.cell_size // 2,
+                        y + self.cell_size // 2
+                    )
     
     def _draw_glyph_bitmap(self, painter, glyph_data, center_x, center_y):
         """绘制字形位图"""
