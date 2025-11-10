@@ -171,12 +171,11 @@ class SimpleFontConverter:
             renderer.set_size(size)
             
             # BPP 映射: 实际位深度 -> GlyphRenderer 的 bpp 参数
-            # 1bit->1, 2bit->2, 4bit->3, 8bit->4
-            bpp_map = {1: 1, 2: 2, 4: 3, 8: 4}
-            renderer_bpp = bpp_map.get(bpp, 3)
-            renderer.set_bpp(renderer_bpp)
+            # GlyphRenderer.bpp 是输出的位深度 (1, 2, 3, 4 对应 1-bit, 2-bit, 3-bit, 4-bit)
+            # 注意: 原来的映射有误! 4-bit 应该用 bpp=4,而不是 3
+            renderer.set_bpp(bpp)
             
-            logger.info(f"渲染器配置: size={size}px, bpp={bpp}bit (renderer_bpp={renderer_bpp})")
+            logger.info(f"渲染器配置: size={size}px, bpp={bpp}bit")
             
             # 4. 渲染所有字形
             self._report_progress("渲染字形", 30)
@@ -206,6 +205,10 @@ class SimpleFontConverter:
             # 用于构建 Cmap
             char_to_glyph_id = {}
             
+            # 用于计算字体度量 (与原版 lv_font_conv 兼容)
+            bbox_tops = []  # offset_y (bitmap_top)
+            bbox_bottoms = []  # offset_y - height
+            
             total_chars = len(codepoints)
             for i, codepoint in enumerate(sorted(codepoints)):
                 # 渲染字形 (使用 Phase 1 的 GlyphRenderer)
@@ -220,6 +223,12 @@ class SimpleFontConverter:
                     continue
                 
                 # 转换为 Phase 2 的 GlyphData 结构
+                # 注意: ofs_y 需要是 bbox.y, 而不是 bitmap_top
+                # 原版: bbox.y = ft_result.y - ft_result.height
+                #       ofs_y = bbox.y
+                # 我们的 offset_y 是 bitmap_top (对应 ft_result.y)
+                ofs_y_value = rendered_glyph.offset_y - rendered_glyph.height
+                
                 lvgl_glyph = GlyphData(
                     glyph_id=glyph_id,
                     unicode=codepoint,
@@ -229,11 +238,19 @@ class SimpleFontConverter:
                     box_w=rendered_glyph.width,
                     box_h=rendered_glyph.height,
                     ofs_x=rendered_glyph.offset_x,
-                    ofs_y=rendered_glyph.offset_y
+                    ofs_y=ofs_y_value
                 )
                 
                 glyf.add_glyph(lvgl_glyph)
                 char_to_glyph_id[codepoint] = glyph_id
+                
+                # 收集 bbox 用于度量计算 (与原版 lv_font_conv 相同的算法)
+                # 原版: bbox.y = ft_result.y - ft_result.height
+                #       ascent = max(bbox.y + bbox.height) = max(ft_result.y)
+                #       descent = min(bbox.y) = min(ft_result.y - height)
+                if rendered_glyph.height > 0:
+                    bbox_tops.append(rendered_glyph.offset_y)
+                    bbox_bottoms.append(rendered_glyph.offset_y - rendered_glyph.height)
                 
                 # 更新位图偏移
                 bitmap_size = rendered_glyph.width * rendered_glyph.height
@@ -307,19 +324,33 @@ class SimpleFontConverter:
             # 7. 构建 Head
             self._report_progress("构建字体头", 85)
             
-            # 计算度量
-            baseline = font_info.ascent * size // font_info.units_per_em
-            line_height = (font_info.ascent - font_info.descent) * size // font_info.units_per_em
+            # 计算度量 (与原版 lv_font_conv 完全相同的算法)
+            # 原版代码: collect_font_data.js line 163-164
+            #   ascent:  Math.max(...glyphs.map(g => g.bbox.y + g.bbox.height)),
+            #   descent: Math.min(...glyphs.map(g => g.bbox.y)),
+            # 其中 bbox.y = ft_result.y - ft_result.height
+            # 所以 ascent = max(ft_result.y), descent = min(ft_result.y - height)
+            if bbox_tops:
+                ascent = max(bbox_tops)
+                descent = min(bbox_bottoms)
+            else:
+                # 如果没有字形,使用默认值
+                ascent = size
+                descent = 0
+            
+            line_height = ascent - descent
+            
+            logger.info(f"字体度量: ascent={ascent}, descent={descent}, line_height={line_height}")
             
             head = LVGLHead(
                 font_size=size,
-                ascent=baseline,
-                descent=line_height - baseline,
-                typo_ascent=baseline,
-                typo_descent=line_height - baseline,
+                ascent=ascent,
+                descent=descent,
+                typo_ascent=ascent,
+                typo_descent=descent,
                 typo_line_gap=0,
-                min_y=-(line_height - baseline),
-                max_y=baseline,
+                min_y=descent,
+                max_y=ascent,
                 default_advance_width=size // 2,  # 估算
                 kerning_scale=0.25,
                 index_to_loc_format=0,

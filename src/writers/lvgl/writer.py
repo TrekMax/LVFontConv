@@ -428,11 +428,12 @@ lv_font_t {font.name} = {{
             # 8-bit: 1 像素/字节,直接返回
             return flat.tobytes()
         elif bpp == 4:
-            # 4-bit: 2 像素/字节,高位在前
+            # 4-bit: 2 像素/字节
+            # 注意: 原版使用 BitStream 大端序(MSB first),所以第一个像素在高nibble
             packed = []
             for i in range(0, len(flat), 2):
-                low = flat[i] & 0x0F  # 低4位(第一个像素)
-                high = (flat[i+1] & 0x0F) << 4 if i+1 < len(flat) else 0  # 高4位(第二个像素)
+                high = (flat[i] & 0x0F) << 4  # 高4位(第一个像素)
+                low = flat[i+1] & 0x0F if i+1 < len(flat) else 0  # 低4位(第二个像素)
                 packed.append(high | low)
             return bytes(packed)
         elif bpp == 2:

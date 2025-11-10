@@ -125,7 +125,11 @@ class GlyphRenderer:
         face = self._faces[font_path]
         
         # Load glyph
-        flags = freetype.FT_LOAD_RENDER
+        # 使用与原版 lv_font_conv 相同的加载标志:
+        # - FT_LOAD_RENDER: 直接渲染为位图
+        # - FT_LOAD_TARGET_LIGHT: 轻度 hinting (只影响水平线)
+        # - FT_LOAD_FORCE_AUTOHINT: 强制使用自动 hinting
+        flags = freetype.FT_LOAD_RENDER | freetype.FT_LOAD_TARGET_LIGHT
         if autohint:
             flags |= freetype.FT_LOAD_FORCE_AUTOHINT
         
