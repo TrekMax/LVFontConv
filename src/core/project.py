@@ -22,6 +22,22 @@ class FontSource:
     symbols: str
     display_name: str = ""
     
+    @property
+    def char_count(self) -> int:
+        """估算字符数"""
+        count = len(self.symbols)
+        for r in self.ranges:
+            if '-' in r:
+                parts = r.split('-')
+                if len(parts) == 2:
+                    try:
+                        start = int(parts[0], 0)
+                        end = int(parts[1], 0)
+                        count += (end - start + 1)
+                    except:
+                        pass
+        return count
+    
     def to_dict(self) -> Dict[str, Any]:
         """Convert to dictionary for JSON serialization"""
         return {

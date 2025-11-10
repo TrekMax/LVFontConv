@@ -55,6 +55,24 @@ class FontSource:
                     except:
                         pass
         return count
+    
+    def to_dict(self):
+        """转换为字典用于序列化"""
+        return {
+            "path": self.path,
+            "ranges": self.ranges,
+            "symbols": self.symbols,
+            "display_name": self.display_name
+        }
+    
+    @classmethod
+    def from_dict(cls, data):
+        """从字典创建实例"""
+        return cls(
+            path=data["path"],
+            ranges=data.get("ranges", []),
+            symbols=data.get("symbols", "")
+        )
 
 
 class FontListWidget(QWidget):
