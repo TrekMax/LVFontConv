@@ -9,7 +9,7 @@
 from PyQt6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel,
     QComboBox, QLineEdit, QScrollArea, QPushButton,
-    QSpinBox, QCheckBox
+    QSpinBox, QCheckBox, QProgressDialog
 )
 from PyQt6.QtCore import Qt, QRect, QSize
 from PyQt6.QtGui import QPainter, QColor, QPen, QFont, QPixmap, QImage
@@ -17,6 +17,7 @@ import numpy as np
 
 from core.font_loader import FontLoader
 from core.glyph_renderer import GlyphRenderer
+from ui.worker_thread import WorkerThread
 from utils.logger import get_logger
 
 logger = get_logger()
@@ -170,6 +171,8 @@ class PreviewWidget(QWidget):
         self.font_path = None
         self.font_loader = None
         self.renderer = None
+        self.worker_thread = None  # 后台渲染线程
+        self.progress_dialog = None  # 进度对话框
         
         self._init_ui()
     
@@ -291,19 +294,93 @@ class PreviewWidget(QWidget):
         for char in symbols:
             codepoints.add(ord(char))
         
-        # 渲染字形
+        total_chars = len(codepoints)
+        
+        # 如果字符数量很多,使用后台线程
+        if total_chars > 100:
+            self._render_glyphs_async(sorted(codepoints))
+        else:
+            self._render_glyphs_sync(sorted(codepoints))
+    
+    def _render_glyphs_sync(self, codepoints):
+        """同步渲染字形(少量字符)"""
         glyphs = []
-        for code in sorted(codepoints):
+        for code in codepoints:
             try:
                 glyph_data = self.renderer.render_glyph(self.font_path, code)
                 glyphs.append((code, glyph_data))
             except Exception as e:
                 logger.debug(f"渲染字符 U+{code:04X} 失败: {e}")
         
-        # 更新画布
         self.canvas.set_glyphs(glyphs)
-        
         logger.info(f"预览已更新: {len(glyphs)} 个字形")
+    
+    def _render_glyphs_async(self, codepoints):
+        """异步渲染字形(大量字符)"""
+        # 取消之前的任务
+        if self.worker_thread and self.worker_thread.isRunning():
+            self.worker_thread.cancel()
+            self.worker_thread.wait()
+        
+        # 显示进度对话框
+        self.progress_dialog = QProgressDialog(
+            "正在渲染字形...",
+            "取消",
+            0,
+            len(codepoints),
+            self
+        )
+        self.progress_dialog.setWindowTitle("预览")
+        self.progress_dialog.setWindowModality(Qt.WindowModality.WindowModal)
+        self.progress_dialog.canceled.connect(self._on_render_cancelled)
+        
+        # 创建后台任务
+        def render_task():
+            glyphs = []
+            for i, code in enumerate(codepoints):
+                if self.worker_thread and self.worker_thread.is_cancelled():
+                    break
+                
+                try:
+                    glyph_data = self.renderer.render_glyph(self.font_path, code)
+                    glyphs.append((code, glyph_data))
+                except Exception as e:
+                    logger.debug(f"渲染字符 U+{code:04X} 失败: {e}")
+                
+                # 更新进度(每10个字符更新一次,避免过于频繁)
+                if i % 10 == 0 and self.progress_dialog:
+                    self.progress_dialog.setValue(i)
+            
+            return glyphs
+        
+        # 启动后台线程
+        self.worker_thread = WorkerThread(render_task)
+        self.worker_thread.finished.connect(self._on_render_finished)
+        self.worker_thread.error.connect(self._on_render_error)
+        self.worker_thread.start()
+    
+    def _on_render_finished(self, glyphs):
+        """渲染完成"""
+        if self.progress_dialog:
+            self.progress_dialog.close()
+            self.progress_dialog = None
+        
+        self.canvas.set_glyphs(glyphs)
+        logger.info(f"预览已更新: {len(glyphs)} 个字形")
+    
+    def _on_render_error(self, error):
+        """渲染出错"""
+        if self.progress_dialog:
+            self.progress_dialog.close()
+            self.progress_dialog = None
+        
+        logger.error(f"渲染失败: {error}")
+    
+    def _on_render_cancelled(self):
+        """取消渲染"""
+        if self.worker_thread:
+            self.worker_thread.cancel()
+            logger.info("用户取消渲染")
     
     def _on_mode_changed(self, index):
         """模式切换"""
