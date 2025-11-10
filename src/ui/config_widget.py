@@ -210,11 +210,18 @@ class ConfigWidget(QWidget):
         layout.addRow("压缩方式:", self.compression_combo)
         
         # 输出文件名
+        output_name_layout = QHBoxLayout()
         self.output_name_edit = QLineEdit()
         self.output_name_edit.setText(self.config.output_name)
         self.output_name_edit.setPlaceholderText("例如: my_font")
         self.output_name_edit.textChanged.connect(self._on_output_name_changed)
-        layout.addRow("输出文件名:", self.output_name_edit)
+        output_name_layout.addWidget(self.output_name_edit)
+        
+        browse_file_button = QPushButton("另存为...")
+        browse_file_button.clicked.connect(self._on_browse_output_file)
+        output_name_layout.addWidget(browse_file_button)
+        
+        layout.addRow("输出文件名:", output_name_layout)
         
         return group
     
@@ -313,6 +320,45 @@ class ConfigWidget(QWidget):
         )
         if dir_path:
             self.output_dir_edit.setText(dir_path)
+    
+    def _on_browse_output_file(self):
+        """浏览输出文件"""
+        # 根据输出格式确定文件过滤器
+        format_filters = {
+            0: "C 文件 (*.c);;所有文件 (*)",  # lvgl
+            1: "二进制文件 (*.bin);;所有文件 (*)",  # bin
+            2: "文本文件 (*.txt);;所有文件 (*)",  # dump
+        }
+        
+        current_format = self.output_format_combo.currentIndex()
+        file_filter = format_filters.get(current_format, "所有文件 (*)")
+        
+        # 构建默认文件名（包含目录）
+        import os
+        default_path = os.path.join(
+            self.config.output_dir,
+            self.config.output_name
+        )
+        
+        file_path, _ = QFileDialog.getSaveFileName(
+            self,
+            "选择输出文件",
+            default_path,
+            file_filter
+        )
+        
+        if file_path:
+            # 分离目录和文件名
+            import os
+            dir_path = os.path.dirname(file_path)
+            file_name = os.path.basename(file_path)
+            
+            # 移除扩展名
+            file_name_without_ext = os.path.splitext(file_name)[0]
+            
+            # 更新目录和文件名
+            self.output_dir_edit.setText(dir_path)
+            self.output_name_edit.setText(file_name_without_ext)
     
     def _on_no_compress_changed(self, state: int):
         """禁用压缩改变"""
