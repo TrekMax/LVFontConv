@@ -196,9 +196,19 @@ class FontListWidget(QWidget):
         symbol_group = QGroupBox("单独符号")
         symbol_layout = QVBoxLayout(symbol_group)
         
+        # 帮助文本和导入按钮
+        help_layout = QHBoxLayout()
         symbol_help = QLabel("直接输入要包含的符号字符:")
         symbol_help.setStyleSheet("color: #666; font-size: 11px;")
-        symbol_layout.addWidget(symbol_help)
+        help_layout.addWidget(symbol_help)
+        help_layout.addStretch()
+        
+        import_btn = QPushButton("从文件导入...")
+        import_btn.setMaximumWidth(100)
+        import_btn.clicked.connect(self._on_import_symbols_from_file)
+        help_layout.addWidget(import_btn)
+        
+        symbol_layout.addLayout(help_layout)
         
         self.txt_symbols = QTextEdit()
         self.txt_symbols.setPlaceholderText("如: .,!?:;-+*/=()[]{}@#$%&\n你好世界©®™")
@@ -328,6 +338,49 @@ class FontListWidget(QWidget):
         self.current_font.symbols = text
         self._update_char_count()
         
+        logger.debug(f"更新符号: {text}")
+    
+    def _on_import_symbols_from_file(self):
+        """从文件导入符号"""
+        file_path, _ = QFileDialog.getOpenFileName(
+            self,
+            "选择文本文件",
+            "",
+            "文本文件 (*.txt);;所有文件 (*)"
+        )
+        
+        if not file_path:
+            return
+        
+        try:
+            # 读取文件内容
+            with open(file_path, 'r', encoding='utf-8') as f:
+                content = f.read()
+            
+            # 获取所有唯一字符
+            unique_chars = ''.join(sorted(set(content)))
+            
+            # 追加到现有内容
+            current_text = self.txt_symbols.toPlainText()
+            if current_text:
+                # 合并并去重
+                all_chars = set(current_text + unique_chars)
+                new_text = ''.join(sorted(all_chars))
+            else:
+                new_text = unique_chars
+            
+            self.txt_symbols.setPlainText(new_text)
+            
+            logger.info(f"从文件导入 {len(unique_chars)} 个唯一字符")
+            
+        except Exception as e:
+            logger.error(f"导入文件失败: {e}")
+            QMessageBox.warning(
+                self,
+                "导入失败",
+                f"无法读取文件:\n{str(e)}"
+            )
+    
         logger.debug(f"更新符号: {text}")
     
     def _update_details(self, font_source: FontSource):
