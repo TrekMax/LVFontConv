@@ -337,12 +337,14 @@ class PreviewWidget(QWidget):
             self.worker_thread.cancel()
             self.worker_thread.wait()
         
+        total_chars = len(codepoints)
+        
         # 显示进度对话框
         self.progress_dialog = QProgressDialog(
             "正在渲染字形...",
             "取消",
             0,
-            len(codepoints),
+            total_chars,
             self
         )
         self.progress_dialog.setWindowTitle("预览")
@@ -364,6 +366,15 @@ class PreviewWidget(QWidget):
                     glyphs.append((code, glyph_data))
                 except Exception as e:
                     logger.debug(f"渲染字符 U+{code:04X} 失败: {e}")
+                
+                # 每10个字符发送一次进度更新
+                if i % 10 == 0:
+                    progress = int((i / total_chars) * 100)
+                    self.worker_thread.progress.emit(progress, f"已渲染 {i}/{total_chars} 个字符")
+            
+            # 发送最终进度
+            if not self.worker_thread.is_cancelled():
+                self.worker_thread.progress.emit(100, f"完成 {len(glyphs)} 个字符")
             
             return glyphs
         
@@ -371,40 +382,18 @@ class PreviewWidget(QWidget):
         self.worker_thread = WorkerThread(render_task)
         self.worker_thread.finished.connect(self._on_render_finished)
         self.worker_thread.error.connect(self._on_render_error)
-        
-        # 连接进度信号(虽然当前 WorkerThread 不发送进度,但为了将来扩展)
-        # 使用定时器定期更新进度
-        from PyQt6.QtCore import QTimer
-        self._progress_timer = QTimer()
-        self._progress_timer.timeout.connect(self._update_progress)
-        self._progress_value = 0
-        self._progress_timer.start(100)  # 每100ms更新一次
+        self.worker_thread.progress.connect(self._on_render_progress)
         
         self.worker_thread.start()
     
-    def _update_progress(self):
-        """更新进度(在主线程中)"""
-        if self.progress_dialog and self.worker_thread:
-            # 简单的进度动画
-            if self.worker_thread.isRunning():
-                self._progress_value = (self._progress_value + 1) % 100
-                # 由于我们不知道确切进度,使用不确定进度条
-                if self.progress_dialog.maximum() != 0:
-                    self.progress_dialog.setMaximum(0)  # 不确定进度模式
-            else:
-                # 线程已结束,停止定时器
-                if hasattr(self, '_progress_timer'):
-                    self._progress_timer.stop()
-        else:
-            if hasattr(self, '_progress_timer'):
-                self._progress_timer.stop()
+    def _on_render_progress(self, percentage, message):
+        """更新渲染进度"""
+        if self.progress_dialog:
+            self.progress_dialog.setValue(int((percentage / 100) * len(self._codepoints_to_render)))
+            self.progress_dialog.setLabelText(f"正在渲染字形... {message}")
     
     def _on_render_finished(self, glyphs):
         """渲染完成"""
-        # 停止进度定时器
-        if hasattr(self, '_progress_timer'):
-            self._progress_timer.stop()
-        
         if self.progress_dialog:
             self.progress_dialog.close()
             self.progress_dialog = None
@@ -414,10 +403,6 @@ class PreviewWidget(QWidget):
     
     def _on_render_error(self, error):
         """渲染出错"""
-        # 停止进度定时器
-        if hasattr(self, '_progress_timer'):
-            self._progress_timer.stop()
-        
         if self.progress_dialog:
             self.progress_dialog.close()
             self.progress_dialog = None
