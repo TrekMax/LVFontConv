@@ -10,7 +10,7 @@
 from PyQt6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QPushButton,
     QListWidget, QListWidgetItem, QGroupBox, QLabel,
-    QLineEdit, QTextEdit, QMessageBox, QFileDialog,
+    QTextEdit, QMessageBox, QFileDialog,
     QSplitter
 )
 from PyQt6.QtCore import Qt, pyqtSignal
@@ -200,9 +200,12 @@ class FontListWidget(QWidget):
         symbol_help.setStyleSheet("color: #666; font-size: 11px;")
         symbol_layout.addWidget(symbol_help)
         
-        self.txt_symbols = QLineEdit()
-        self.txt_symbols.setPlaceholderText("如: .,!?:;-+*/=()[]{}@#$%&")
+        self.txt_symbols = QTextEdit()
+        self.txt_symbols.setPlaceholderText("如: .,!?:;-+*/=()[]{}@#$%&\n你好世界©®™")
         self.txt_symbols.textChanged.connect(self._on_symbols_changed)
+        self.txt_symbols.setMinimumHeight(60)
+        self.txt_symbols.setMaximumHeight(120)
+        self.txt_symbols.setAcceptRichText(False)
         symbol_layout.addWidget(self.txt_symbols)
         
         layout.addWidget(symbol_group)
@@ -316,11 +319,12 @@ class FontListWidget(QWidget):
         
         logger.debug(f"更新范围: {ranges}")
     
-    def _on_symbols_changed(self, text: str):
+    def _on_symbols_changed(self):
         """符号字符变化"""
         if not self.current_font:
             return
         
+        text = self.txt_symbols.toPlainText()
         self.current_font.symbols = text
         self._update_char_count()
         
@@ -337,7 +341,7 @@ class FontListWidget(QWidget):
         
         # 更新符号
         self.txt_symbols.blockSignals(True)
-        self.txt_symbols.setText(font_source.symbols)
+        self.txt_symbols.setPlainText(font_source.symbols)
         self.txt_symbols.blockSignals(False)
         
         self._update_char_count()
