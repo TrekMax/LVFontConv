@@ -351,7 +351,9 @@ class PreviewWidget(QWidget):
         self.progress_dialog.setWindowModality(Qt.WindowModality.WindowModal)
         self.progress_dialog.setAutoClose(True)  # 完成时自动关闭
         self.progress_dialog.setAutoReset(False)  # 不要自动重置
+        self.progress_dialog.setMinimumDuration(0)  # 立即显示,不延迟
         self.progress_dialog.canceled.connect(self._on_render_cancelled)
+        self.progress_dialog.show()  # 强制立即显示
         
         # 保存码点列表供后台线程使用
         self._codepoints_to_render = codepoints
