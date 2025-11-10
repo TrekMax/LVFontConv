@@ -398,16 +398,23 @@ class PreviewWidget(QWidget):
     
     def _on_render_finished(self, glyphs):
         """渲染完成"""
+        logger.debug(f"_on_render_finished 被调用,glyphs 数量: {len(glyphs) if glyphs else 0}")
+        
         # 先断开信号,避免在关闭对话框后还收到进度更新
         if self.worker_thread:
             try:
                 self.worker_thread.progress.disconnect()
-            except:
-                pass
+                logger.debug("进度信号已断开")
+            except Exception as e:
+                logger.debug(f"断开进度信号失败: {e}")
         
         if self.progress_dialog:
+            logger.debug("正在关闭进度对话框...")
             self.progress_dialog.close()
             self.progress_dialog = None
+            logger.debug("进度对话框已关闭")
+        else:
+            logger.debug("进度对话框为 None,无需关闭")
         
         self.canvas.set_glyphs(glyphs)
         logger.info(f"预览已更新: {len(glyphs)} 个字形")
@@ -432,6 +439,11 @@ class PreviewWidget(QWidget):
         if self.worker_thread:
             self.worker_thread.cancel()
             logger.info("用户取消渲染")
+        
+        # 关闭进度对话框
+        if self.progress_dialog:
+            self.progress_dialog.close()
+            self.progress_dialog = None
     
     def _on_mode_changed(self, index):
         """模式切换"""
