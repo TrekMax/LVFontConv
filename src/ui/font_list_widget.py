@@ -381,8 +381,6 @@ class FontListWidget(QWidget):
                 f"无法读取文件:\n{str(e)}"
             )
     
-        logger.debug(f"更新符号: {text}")
-    
     def _update_details(self, font_source: FontSource):
         """更新详情显示"""
         self.lbl_font_path.setText(f"路径: {font_source.path}")
