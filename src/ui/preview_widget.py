@@ -388,12 +388,23 @@ class PreviewWidget(QWidget):
     
     def _on_render_progress(self, percentage, message):
         """更新渲染进度"""
-        if self.progress_dialog:
-            self.progress_dialog.setValue(int((percentage / 100) * len(self._codepoints_to_render)))
-            self.progress_dialog.setLabelText(f"正在渲染字形... {message}")
+        if self.progress_dialog is not None:
+            try:
+                self.progress_dialog.setValue(int((percentage / 100) * len(self._codepoints_to_render)))
+                self.progress_dialog.setLabelText(f"正在渲染字形... {message}")
+            except (AttributeError, RuntimeError):
+                # 对话框可能已经被关闭
+                pass
     
     def _on_render_finished(self, glyphs):
         """渲染完成"""
+        # 先断开信号,避免在关闭对话框后还收到进度更新
+        if self.worker_thread:
+            try:
+                self.worker_thread.progress.disconnect()
+            except:
+                pass
+        
         if self.progress_dialog:
             self.progress_dialog.close()
             self.progress_dialog = None
@@ -403,6 +414,13 @@ class PreviewWidget(QWidget):
     
     def _on_render_error(self, error):
         """渲染出错"""
+        # 先断开信号
+        if self.worker_thread:
+            try:
+                self.worker_thread.progress.disconnect()
+            except:
+                pass
+        
         if self.progress_dialog:
             self.progress_dialog.close()
             self.progress_dialog = None
