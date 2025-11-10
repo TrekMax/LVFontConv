@@ -120,16 +120,25 @@ class GlyphPreviewCanvas(QWidget):
             return
         
         # 创建 QImage
-        # 假设 bitmap 是灰度图 (0-255)
+        # 假设 bitmap 是灰度图
         if bitmap.ndim == 1:
             bitmap = bitmap.reshape(height, width)
         
-        # 转换为 RGBA
+        # FreeType 返回的 bitmap 可能是不同位深度的灰度图
+        # 需要归一化到 0-255 范围
+        if bitmap.max() > 0:
+            # 将 bitmap 缩放到 0-255 范围
+            normalized = (bitmap.astype(np.float32) / bitmap.max() * 255).astype(np.uint8)
+        else:
+            normalized = bitmap.astype(np.uint8)
+        
+        # 转换为 RGBA (黑色字形)
+        # 使用 normalized bitmap 作为 alpha 通道，RGB 设为 0
         image_data = np.zeros((height, width, 4), dtype=np.uint8)
-        image_data[:, :, 0] = 0      # R
-        image_data[:, :, 1] = 0      # G
-        image_data[:, :, 2] = 0      # B
-        image_data[:, :, 3] = bitmap # A
+        image_data[:, :, 0] = 0          # R (黑色)
+        image_data[:, :, 1] = 0          # G (黑色)
+        image_data[:, :, 2] = 0          # B (黑色)
+        image_data[:, :, 3] = normalized # A (不透明度)
         
         # 创建 QImage
         qimage = QImage(
