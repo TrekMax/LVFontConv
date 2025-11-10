@@ -349,6 +349,8 @@ class PreviewWidget(QWidget):
         )
         self.progress_dialog.setWindowTitle("预览")
         self.progress_dialog.setWindowModality(Qt.WindowModality.WindowModal)
+        self.progress_dialog.setAutoClose(True)  # 完成时自动关闭
+        self.progress_dialog.setAutoReset(False)  # 不要自动重置
         self.progress_dialog.canceled.connect(self._on_render_cancelled)
         
         # 保存码点列表供后台线程使用
@@ -410,7 +412,8 @@ class PreviewWidget(QWidget):
         
         if self.progress_dialog:
             logger.debug("正在关闭进度对话框...")
-            self.progress_dialog.close()
+            self.progress_dialog.cancel()  # 先取消对话框
+            self.progress_dialog.deleteLater()  # 延迟删除
             self.progress_dialog = None
             logger.debug("进度对话框已关闭")
         else:
@@ -429,7 +432,8 @@ class PreviewWidget(QWidget):
                 pass
         
         if self.progress_dialog:
-            self.progress_dialog.close()
+            self.progress_dialog.cancel()
+            self.progress_dialog.deleteLater()
             self.progress_dialog = None
         
         logger.error(f"渲染失败: {error}")
@@ -442,7 +446,8 @@ class PreviewWidget(QWidget):
         
         # 关闭进度对话框
         if self.progress_dialog:
-            self.progress_dialog.close()
+            self.progress_dialog.cancel()
+            self.progress_dialog.deleteLater()
             self.progress_dialog = None
     
     def _on_mode_changed(self, index):
