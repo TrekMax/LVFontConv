@@ -391,6 +391,10 @@ class PreviewWidget(QWidget):
                 # 由于我们不知道确切进度,使用不确定进度条
                 if self.progress_dialog.maximum() != 0:
                     self.progress_dialog.setMaximum(0)  # 不确定进度模式
+            else:
+                # 线程已结束,停止定时器
+                if hasattr(self, '_progress_timer'):
+                    self._progress_timer.stop()
         else:
             if hasattr(self, '_progress_timer'):
                 self._progress_timer.stop()
