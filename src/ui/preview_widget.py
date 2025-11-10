@@ -9,7 +9,7 @@
 from PyQt6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel,
     QComboBox, QLineEdit, QScrollArea, QPushButton,
-    QSpinBox, QCheckBox, QProgressDialog
+    QSpinBox, QCheckBox, QProgressDialog, QApplication
 )
 from PyQt6.QtCore import Qt, QRect, QSize
 from PyQt6.QtGui import QPainter, QColor, QPen, QFont, QPixmap, QImage
@@ -387,6 +387,9 @@ class PreviewWidget(QWidget):
         self.worker_thread.finished.connect(self._on_render_finished)
         self.worker_thread.error.connect(self._on_render_error)
         self.worker_thread.progress.connect(self._on_render_progress)
+        
+        # 强制处理事件,确保对话框先显示
+        QApplication.processEvents()
         
         self.worker_thread.start()
     
