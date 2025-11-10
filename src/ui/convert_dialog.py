@@ -4,6 +4,7 @@
 提供进度条、日志输出、取消按钮和成功/失败状态显示。
 """
 
+import os
 from typing import Optional
 from PyQt6.QtWidgets import (
     QDialog, QVBoxLayout, QHBoxLayout, QLabel,
@@ -77,28 +78,55 @@ class ConvertThread(QThread):
                 self.log_message.emit(f"  字符数: {font.char_count}")
                 self.log_message.emit("")
                 
-                # 执行转换
-                output_path = f"/tmp/{self.config.output_name}_{i}"  # TODO: 使用实际输出路径
+                # 构建输出路径
+                os.makedirs(self.config.output_dir, exist_ok=True)
+                output_filename = f"{self.config.output_name}_{i}" if total_fonts > 1 else self.config.output_name
+                output_path = os.path.join(self.config.output_dir, output_filename)
                 
-                success = converter.convert_font(
-                    font_path=font.path,
-                    ranges=font.ranges,
-                    symbols=font.symbols,
-                    size=self.config.font_size,
-                    bpp=self.config.bpp,
-                    output_path=output_path,
-                    compression=self.config.compression,
-                    lvgl_version=self.config.lvgl_version,
-                    no_kerning=self.config.no_kerning,
-                    lcd_mode=self.config.lcd,
-                    lcd_v_mode=self.config.lcd_v
-                )
-                
-                if success:
-                    self.log_message.emit(f"  ✓ 转换完成: {output_path}.c")
-                else:
-                    self.log_message.emit(f"  ✗ 转换失败")
-                    self.conversion_finished.emit(False, f"字体 {font.display_name} 转换失败")
+                try:
+                    success = converter.convert_font(
+                        font_path=font.path,
+                        ranges=font.ranges,
+                        symbols=font.symbols,
+                        size=self.config.font_size,
+                        bpp=self.config.bpp,
+                        output_path=output_path,
+                        compression=self.config.compression,
+                        lvgl_version=self.config.lvgl_version,
+                        no_kerning=self.config.no_kerning,
+                        lcd_mode=self.config.lcd,
+                        lcd_v_mode=self.config.lcd_v
+                    )
+                    
+                    if success:
+                        self.log_message.emit(f"  ✓ 转换完成: {output_path}.c")
+                    else:
+                        self.log_message.emit(f"  ✗ 转换失败")
+                        self.conversion_finished.emit(False, f"字体 {font.display_name} 转换失败")
+                        return
+                        
+                except FileNotFoundError as e:
+                    error_msg = f"文件不存在: {str(e)}\n建议: 检查字体文件路径是否正确"
+                    self.log_message.emit(f"\n  ✗ 错误: {error_msg}")
+                    self.conversion_finished.emit(False, error_msg)
+                    return
+                    
+                except PermissionError as e:
+                    error_msg = f"权限错误: {str(e)}\n建议: 检查输出目录的写入权限"
+                    self.log_message.emit(f"\n  ✗ 错误: {error_msg}")
+                    self.conversion_finished.emit(False, error_msg)
+                    return
+                    
+                except ValueError as e:
+                    error_msg = f"参数错误: {str(e)}\n建议: 检查字体大小、BPP 等配置参数是否有效"
+                    self.log_message.emit(f"\n  ✗ 错误: {error_msg}")
+                    self.conversion_finished.emit(False, error_msg)
+                    return
+                    
+                except Exception as e:
+                    error_msg = f"转换失败: {str(e)}\n建议: 检查字体文件是否有效,或尝试更改配置参数"
+                    self.log_message.emit(f"\n  ✗ 错误: {error_msg}")
+                    self.conversion_finished.emit(False, error_msg)
                     return
                 
                 self.log_message.emit("")

@@ -19,6 +19,8 @@ from PyQt6.QtGui import QAction, QIcon, QKeySequence
 from .font_list_widget import FontListWidget
 from .config_widget import ConfigWidget
 from .convert_dialog import ConvertDialog
+from .preview_widget import PreviewWidget
+from .about_dialog import AboutDialog
 from core.project import Project, FontSource
 from utils.logger import get_logger
 
@@ -180,32 +182,46 @@ class MainWindow(QMainWindow):
         # 主布局
         layout = QVBoxLayout(central_widget)
         
-        # 创建分割器
-        splitter = QSplitter(Qt.Orientation.Horizontal)
+        # 创建主分割器 (水平)
+        main_splitter = QSplitter(Qt.Orientation.Horizontal)
         
         # 左侧面板 (字体列表)
         self.font_list_widget = FontListWidget()
-        splitter.addWidget(self.font_list_widget)
+        main_splitter.addWidget(self.font_list_widget)
         
-        # 右侧面板 (配置)
+        # 创建右侧垂直分割器 (配置 + 预览)
+        right_splitter = QSplitter(Qt.Orientation.Vertical)
+        
+        # 配置面板
         self.config_widget = ConfigWidget()
-        splitter.addWidget(self.config_widget)
+        right_splitter.addWidget(self.config_widget)
         
-        # 设置分割比例
-        splitter.setStretchFactor(0, 1)
-        splitter.setStretchFactor(1, 2)
+        # 预览面板
+        self.preview_widget = PreviewWidget()
+        right_splitter.addWidget(self.preview_widget)
         
-        layout.addWidget(splitter)
+        # 设置右侧分割比例 (配置:预览 = 1:2)
+        right_splitter.setStretchFactor(0, 1)
+        right_splitter.setStretchFactor(1, 2)
+        
+        main_splitter.addWidget(right_splitter)
+        
+        # 设置主分割比例 (字体列表:右侧 = 1:3)
+        main_splitter.setStretchFactor(0, 1)
+        main_splitter.setStretchFactor(1, 3)
+        
+        layout.addWidget(main_splitter)
         
         # 连接字体列表信号
         self.font_list_widget.font_added.connect(self._on_font_list_changed)
         self.font_list_widget.font_removed.connect(self._on_font_list_changed)
         self.font_list_widget.font_changed.connect(self._on_font_list_changed)
+        self.font_list_widget.font_changed.connect(self._update_preview)  # 更新预览
         
         # 连接配置变化信号
         self.config_widget.config_changed.connect(self._on_config_changed)
         
-        # 连接菜单/工具栏动作到字体列表组件的内部方法
+        # 连接菜单到字体列表
         self.action_add_font.triggered.connect(self.font_list_widget._on_add_font)
         self.action_remove_font.triggered.connect(self.font_list_widget._on_remove_font)
     
@@ -315,6 +331,14 @@ class MainWindow(QMainWindow):
             )
             return
         
+        if not config.output_dir.strip():
+            QMessageBox.warning(
+                self,
+                "配置错误",
+                "请设置输出目录。"
+            )
+            return
+        
         logger.info(f"开始转换 {len(fonts)} 个字体")
         
         # 显示转换对话框
@@ -330,20 +354,33 @@ class MainWindow(QMainWindow):
     def _on_preview(self):
         """预览字体"""
         logger.info("预览字体")
-        # TODO: 实现预览逻辑
-        self.statusBar().showMessage("显示预览", 2000)
+        self._update_preview()
+        self.statusBar().showMessage("预览已更新", 2000)
+    
+    def _update_preview(self):
+        """更新预览"""
+        # 获取当前选中的字体
+        fonts = self.font_list_widget.get_font_sources()
+        if not fonts:
+            return
+        
+        # 使用第一个字体进行预览
+        font = fonts[0]
+        
+        # 获取字体大小
+        config = self.config_widget.get_config()
+        
+        # 更新预览
+        try:
+            self.preview_widget.set_font(font.path, config.font_size)
+            self.preview_widget.set_ranges(font.ranges, font.symbols)
+            logger.info(f"预览已更新: {font.display_name}")
+        except Exception as e:
+            logger.error(f"更新预览失败: {e}")
     
     def _on_about(self):
         """关于对话框"""
-        QMessageBox.about(
-            self,
-            "关于 LVFontConv",
-            "<h2>LVFontConv</h2>"
-            "<p>LVGL 字体转换工具 Python 版</p>"
-            "<p>版本: 1.0.0</p>"
-            "<p>基于 PyQt6 开发</p>"
-            "<p>© 2025 LVGL</p>"
-        )
+        AboutDialog.show_about(self)
     
     def _on_help(self):
         """帮助文档"""
@@ -517,11 +554,11 @@ class MainWindow(QMainWindow):
     def _load_project_to_UI(self):
         """将项目数据加载到 UI"""
         # 清空字体列表
-        self.font_list.clear_fonts()
+        self.font_list_widget.clear_fonts()
         
         # 加载字体
         for font_source in self.project.fonts:
-            self.font_list.add_font_source(font_source)
+            self.font_list_widget.add_font_source(font_source)
         
         # 加载配置
         self.config_widget.set_config(self.project.config)
@@ -529,7 +566,7 @@ class MainWindow(QMainWindow):
     def _save_ui_to_project(self):
         """将 UI 数据保存到项目"""
         # 保存字体列表
-        self.project.fonts = self.font_list.get_font_sources()
+        self.project.fonts = self.font_list_widget.get_font_sources()
         
         # 保存配置
         self.project.config = self.config_widget.get_config()

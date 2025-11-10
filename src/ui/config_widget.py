@@ -9,7 +9,7 @@ from typing import Optional
 from PyQt6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QFormLayout, QGroupBox,
     QLabel, QSlider, QSpinBox, QComboBox, QRadioButton, 
-    QButtonGroup, QCheckBox, QLineEdit
+    QButtonGroup, QCheckBox, QLineEdit, QPushButton, QFileDialog
 )
 from PyQt6.QtCore import Qt, pyqtSignal
 
@@ -36,6 +36,9 @@ class ConvertConfig:
     # 输出格式
     output_format: str = "lvgl"  # lvgl, bin, dump
     
+    # 输出目录
+    output_dir: str = "./output"
+    
     # 输出文件名
     output_name: str = "my_font"
     
@@ -54,6 +57,7 @@ class ConvertConfig:
             'compression': self.compression,
             'lvgl_version': self.lvgl_version,
             'output_format': self.output_format,
+            'output_dir': self.output_dir,
             'output_name': self.output_name,
             'no_compress': self.no_compress,
             'no_prefilter': self.no_prefilter,
@@ -71,6 +75,7 @@ class ConvertConfig:
             compression=data.get('compression', 'rle'),
             lvgl_version=data.get('lvgl_version', 8),
             output_format=data.get('output_format', 'lvgl'),
+            output_dir=data.get('output_dir', './output'),
             output_name=data.get('output_name', 'my_font'),
             no_compress=data.get('no_compress', False),
             no_prefilter=data.get('no_prefilter', False),
@@ -180,6 +185,20 @@ class ConfigWidget(QWidget):
         self.output_format_combo.currentIndexChanged.connect(self._on_output_format_changed)
         layout.addRow("输出格式:", self.output_format_combo)
         
+        # 输出目录
+        output_dir_layout = QHBoxLayout()
+        self.output_dir_edit = QLineEdit()
+        self.output_dir_edit.setText(self.config.output_dir)
+        self.output_dir_edit.setPlaceholderText("例如: ./output")
+        self.output_dir_edit.textChanged.connect(self._on_output_dir_changed)
+        output_dir_layout.addWidget(self.output_dir_edit)
+        
+        browse_button = QPushButton("浏览...")
+        browse_button.clicked.connect(self._on_browse_output_dir)
+        output_dir_layout.addWidget(browse_button)
+        
+        layout.addRow("输出目录:", output_dir_layout)
+        
         # 压缩方式
         self.compression_combo = QComboBox()
         self.compression_combo.addItems([
@@ -279,6 +298,22 @@ class ConfigWidget(QWidget):
         self.config.output_name = text
         self.config_changed.emit()
     
+    def _on_output_dir_changed(self, text: str):
+        """输出目录改变"""
+        self.config.output_dir = text
+        self.config_changed.emit()
+    
+    def _on_browse_output_dir(self):
+        """浏览输出目录"""
+        dir_path = QFileDialog.getExistingDirectory(
+            self,
+            "选择输出目录",
+            self.config.output_dir,
+            QFileDialog.Option.ShowDirsOnly
+        )
+        if dir_path:
+            self.output_dir_edit.setText(dir_path)
+    
     def _on_no_compress_changed(self, state: int):
         """禁用压缩改变"""
         self.config.no_compress = bool(state)
@@ -341,6 +376,7 @@ class ConfigWidget(QWidget):
         if config.compression in compressions:
             self.compression_combo.setCurrentIndex(compressions.index(config.compression))
         
+        self.output_dir_edit.setText(config.output_dir)
         self.output_name_edit.setText(config.output_name)
         
         # 高级选项
