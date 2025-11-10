@@ -109,16 +109,16 @@ class Project:
         Save project to file
         
         Args:
-            file_path: Path to save project file (.lvproj)
+            file_path: Path to save project file (.lvfc)
             
         Returns:
             True if successful, False otherwise
         """
         try:
-            # Ensure .lvproj extension
+            # Ensure .lvfc extension
             path = Path(file_path)
-            if path.suffix != '.lvproj':
-                path = path.with_suffix('.lvproj')
+            if path.suffix != '.lvfc':
+                path = path.with_suffix('.lvfc')
             
             # Convert to JSON
             data = self.to_dict()
@@ -142,7 +142,7 @@ class Project:
         Load project from file
         
         Args:
-            file_path: Path to project file (.lvproj)
+            file_path: Path to project file (.lvfc)
             
         Returns:
             True if successful, False otherwise

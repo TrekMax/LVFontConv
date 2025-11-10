@@ -246,7 +246,7 @@ class MainWindow(QMainWindow):
             self,
             "打开项目",
             "",
-            "LVFontConv 项目 (*.lvproj);;所有文件 (*)"
+            "LVFontConv 项目 (*.lvfc);;所有文件 (*)"
         )
         if filename:
             logger.info(f"打开项目: {filename}")
@@ -266,7 +266,7 @@ class MainWindow(QMainWindow):
             self,
             "另存为项目",
             "",
-            "LVFontConv 项目 (*.lvproj);;所有文件 (*)"
+            "LVFontConv 项目 (*.lvfc);;所有文件 (*)"
         )
         if filename:
             logger.info(f"另存为: {filename}")
@@ -486,7 +486,7 @@ class MainWindow(QMainWindow):
             self,
             "打开项目",
             "",
-            "LVFontConv 项目 (*.lvproj);;所有文件 (*)"
+            "LVFontConv 项目 (*.lvfc);;所有文件 (*)"
         )
         
         if file_path:
@@ -530,8 +530,8 @@ class MainWindow(QMainWindow):
             file_path, _ = QFileDialog.getSaveFileName(
                 self,
                 "保存项目",
-                self.project.config.output_name + ".lvproj",
-                "LVFontConv 项目 (*.lvproj);;所有文件 (*)"
+                self.project.config.output_name + ".lvfc",
+                "LVFontConv 项目 (*.lvfc);;所有文件 (*)"
             )
             
             if not file_path:
